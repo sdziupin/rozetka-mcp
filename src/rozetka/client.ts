@@ -37,6 +37,37 @@ function appendFilters(params: URLSearchParams, filters: SearchSpec["filters"]):
   }
 }
 
+function parseNavigateTarget(value: unknown): { url: string; categoryId?: number; filters: SearchSpec["filters"] } | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+
+  const categoryId = categoryIdFromUrl(value);
+  const filters: NonNullable<SearchSpec["filters"]> = {};
+
+  try {
+    const parsed = new URL(value);
+    if (categoryId) {
+      const marker = `/c${categoryId}/`;
+      const tail = parsed.pathname.includes(marker)
+        ? parsed.pathname.split(marker, 2)[1].replace(/^\\/+|\\/+$/g, "")
+        : "";
+
+      for (const part of tail.split(";")) {
+        if (!part || !part.includes("=")) continue;
+        const [rawKey, ...rawRest] = part.split("=");
+        const key = decodeURIComponent(rawKey);
+        const rawValue = rawRest.join("=");
+        if (!key || !rawValue) continue;
+        const values = rawValue.split(",").map((entry) => decodeURIComponent(entry)).filter(Boolean);
+        if (values.length) filters[key] = values.length === 1 ? values[0] : values;
+      }
+    }
+  } catch {
+    // The category id is still useful even if Rozetka returns a malformed URL.
+  }
+
+  return { url: value, categoryId, filters };
+}
+
 export class RozetkaClient {
   constructor(
     private readonly config: Config,
@@ -88,6 +119,35 @@ export class RozetkaClient {
     let products = extractProducts(raw);
     const rawIds = extractIds(raw);
     const ids = rawIds.length ? rawIds : products.map((product) => product.id);
+    const navigateTo = object(object(data.meta)?.navigateTo)?.url;
+
+    if (!ids.length && !products.length && typeof navigateTo === "string") {
+      const target = parseNavigateTarget(navigateTo);
+      if (target?.categoryId) {
+        try {
+          const redirected = await this.searchCategory(target.categoryId, {
+            page,
+            limit,
+            seller: spec.seller,
+            sort: spec.sort,
+            filters: { ...target.filters, ...spec.filters },
+          });
+          let redirectedProducts = Array.isArray(redirected.products) ? redirected.products as Product[] : [];
+          if (spec.min_price !== undefined) redirectedProducts = redirectedProducts.filter((p) => p.price !== undefined && p.price >= spec.min_price!);
+          if (spec.max_price !== undefined) redirectedProducts = redirectedProducts.filter((p) => p.price !== undefined && p.price <= spec.max_price!);
+          return {
+            ...redirected,
+            query,
+            products: redirectedProducts.slice(0, limit),
+            returned: redirectedProducts.slice(0, limit).length,
+            resolved_via: "category_redirect",
+            navigate_to: navigateTo,
+          };
+        } catch {
+          // Fall through to the original search response if the redirect target cannot be resolved.
+        }
+      }
+    }
 
     if (spec.hydrate !== false && ids.length) {
       try {
@@ -112,7 +172,7 @@ export class RozetkaClient {
       total: total ?? null,
       products,
       pagination: pagination ?? null,
-      navigate_to: object(object(data.meta)?.navigateTo)?.url ?? null,
+      navigate_to: navigateTo ?? null,
     };
   }
 
@@ -223,7 +283,7 @@ export class RozetkaClient {
     return { total: matches.length, returned: Math.min(matches.length, limit), categories: matches.slice(0, Math.max(1, Math.min(500, limit))) };
   }
 
-  async searchCategory(categoryId: number, options: { page?: number; limit?: number; seller?: string; sort?: SearchSort } = {}): Promise<JsonObject> {
+  async searchCategory(categoryId: number, options: { page?: number; limit?: number; seller?: string; sort?: SearchSort; filters?: SearchSpec["filters"] } = {}): Promise<JsonObject> {
     if (!Number.isInteger(categoryId) || categoryId <= 0) throw new Error("category_id must be a positive integer");
     const page = Math.max(1, Math.floor(options.page ?? 1));
     const limit = Math.max(1, Math.min(60, Math.floor(options.limit ?? 20)));
@@ -233,6 +293,7 @@ export class RozetkaClient {
     if (options.seller) params.set("seller", options.seller);
     const sort = sortValue(options.sort);
     if (sort) params.set("sort", sort);
+    appendFilters(params, options.filters);
 
     const raw = await this.get<unknown>(`${this.config.catalogApiBase}/goods/get?${params}`);
     const data = extractSearchData(raw);
