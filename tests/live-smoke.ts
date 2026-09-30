@@ -4,9 +4,12 @@ const headers = {
   "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
 };
 
-async function getText(url: URL): Promise<{ status: number; text: string }> {
+async function fetchJson(url: URL): Promise<{ status: number; text: string; json?: unknown }> {
   const response = await fetch(url, { headers });
-  return { status: response.status, text: await response.text() };
+  const text = await response.text();
+  let json: unknown;
+  try { json = JSON.parse(text); } catch {}
+  return { status: response.status, text, json };
 }
 
 const search = new URL("https://search.rozetka.com.ua/ua/search/api/v6/");
@@ -16,36 +19,34 @@ search.searchParams.set("lang", "ua");
 search.searchParams.set("text", "Asus Zenbook 14");
 search.searchParams.set("page", "1");
 
-const searchResult = await getText(search);
+const searchResult = await fetchJson(search);
 if (searchResult.status !== 200) throw new Error(`Search HTTP ${searchResult.status}`);
-const searchJson = JSON.parse(searchResult.text) as { data?: { goods?: Array<{ id?: number } | number> } };
+const searchJson = searchResult.json as { data?: { goods?: Array<{ id?: number } | number> } };
 const first = searchJson.data?.goods?.[0];
 const productId = typeof first === "number" ? first : Number(first?.id);
 if (!productId) throw new Error("Search returned no product id");
 
-const probes = [
-  "https://product-api.rozetka.com.ua/v4/goods/get-characteristic",
-  "https://product-api.rozetka.com.ua/v4/goods/get-goods-description",
-  "https://product-api.rozetka.com.ua/v4/marketing/get-super-offer",
-  "https://product-api.rozetka.com.ua/v4/goods/get-related",
+const endpoints = [
+  { path: "get-main", param: "id" },
+  { path: "get-additional-prices", param: "id" },
+  { path: "get-characteristic", param: "goodsId" },
+  { path: "get-goods-description", param: "goodsId" },
 ];
 
-let publicProductApiCount = 0;
-for (const endpoint of probes) {
-  const url = new URL(endpoint);
+let ok = 0;
+for (const endpoint of endpoints) {
+  const url = new URL(`https://product-api.rozetka.com.ua/v4/goods/${endpoint.path}`);
   url.searchParams.set("country", "UA");
   url.searchParams.set("lang", "ua");
-  url.searchParams.set("goodsId", String(productId));
-  const result = await getText(url);
+  url.searchParams.set(endpoint.param, String(productId));
+  const result = await fetchJson(url);
   console.log(JSON.stringify({
-    endpoint,
+    endpoint: endpoint.path,
     product_id: productId,
     status: result.status,
-    body: result.text.slice(0, 5000),
+    body: result.text.slice(0, 8000),
   }, null, 2));
-  if (result.status === 200) publicProductApiCount += 1;
+  if (result.status === 200) ok += 1;
 }
 
-if (publicProductApiCount < 2) {
-  throw new Error(`Too few public product-api endpoints passed: ${publicProductApiCount}`);
-}
+if (ok !== endpoints.length) throw new Error(`Only ${ok}/${endpoints.length} public product endpoints passed`);
