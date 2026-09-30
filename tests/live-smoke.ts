@@ -1,22 +1,39 @@
-const headers = {
-  Referer: "https://rozetka.com.ua/",
-  Accept: "application/json, text/plain, */*",
-  "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
-};
+import { loadConfig } from "../src/config.js";
+import { RozetkaClient } from "../src/rozetka/client.js";
 
-async function get(url: URL): Promise<{ status: number; text: string }> {
-  const response = await fetch(url, { headers });
-  return { status: response.status, text: await response.text() };
+const client = new RozetkaClient(loadConfig());
+
+const search = await client.search({
+  query: "Asus Zenbook 14",
+  limit: 3,
+  hydrate: false,
+});
+
+if (typeof search.returned !== "number" || search.returned < 1) {
+  throw new Error("Live search returned no Rozetka product ids");
 }
 
-const productId = 510920189;
-const probes = [
-  new URL(`https://product-api.rozetka.com.ua/v4/goods/get-other-sellers?front-type=xl&country=UA&lang=ua&goodsId=${productId}`),
-  new URL(`https://product-api.rozetka.com.ua/v4/comments/get?front-type=xl&country=UA&lang=ua&goods=${productId}&page=1&sort=date&type=comment&limit=1`),
-];
+const products = search.products as Array<{ id?: number }>;
+const productId = products[0]?.id;
+if (!productId) throw new Error("Live search result has no product id");
 
-for (const url of probes) {
-  const result = await get(url);
-  console.log(JSON.stringify({ url: String(url), status: result.status, body: result.text.slice(0, 12000) }, null, 2));
-  if (result.status !== 200) throw new Error(`Probe failed: ${result.status} ${url}`);
-}
+const resolved = await client.getProduct(productId);
+const product = resolved.product as { id?: number } | undefined;
+if (product?.id !== productId) throw new Error("Product resolution returned the wrong id");
+if (!resolved.description || resolved.description_error) throw new Error("Product description API is unavailable");
+if (!resolved.characteristics || resolved.characteristics_error) throw new Error("Product characteristics API is unavailable");
+
+const filters = await client.listFilters("Asus Zenbook 14");
+if (!Array.isArray(filters.options)) throw new Error("Search filter metadata is unavailable");
+
+const categories = await client.listCategories("Asus Zenbook 14", 20);
+if (!Array.isArray(categories.categories)) throw new Error("Category suggestions are unavailable");
+
+console.log(JSON.stringify({
+  search_returned: search.returned,
+  product_id: productId,
+  description: "ok",
+  characteristics: "ok",
+  filters: "ok",
+  categories: "ok",
+}, null, 2));
