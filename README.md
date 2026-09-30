@@ -90,7 +90,7 @@ Source checkout MCP config:
   "mcpServers": {
     "rozetka": {
       "command": "node",
-      "args": ["/absolute/path/to/rozetka-mcp/dist/src/index.js"]
+      "args": ["/absolute/path/to/rozetka-mcp/dist/index.js"]
     }
   }
 }
