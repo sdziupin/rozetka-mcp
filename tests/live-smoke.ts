@@ -1,29 +1,25 @@
-import { req } from "curl-cffi";
+const url = new URL("https://search.rozetka.com.ua/ua/search/api/v6/");
+url.searchParams.set("front-type", "xl");
+url.searchParams.set("country", "UA");
+url.searchParams.set("lang", "ua");
+url.searchParams.set("text", "iphone");
+url.searchParams.set("section_id", "80003");
+url.searchParams.set("producer", "apple");
+url.searchParams.set("page", "1");
 
-const headers = {
-  Referer: "https://rozetka.com.ua/",
-  Accept: "application/json, text/plain, */*",
-  "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
-};
+const response = await fetch(url, {
+  headers: {
+    Referer: "https://rozetka.com.ua/",
+    Accept: "application/json, text/plain, */*",
+    "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
+  },
+});
+const text = await response.text();
+console.log(JSON.stringify({ status: response.status, url: String(url), body: text.slice(0, 8000) }, null, 2));
 
-const categoryUrl = "https://rozetka.com.ua/ua/mobile-phones/c80003/producer=apple/";
-const probes = [
-  "https://xl-catalog-api.rozetka.com.ua/v4/goods/get?front-type=xl&country=UA&lang=ua&category_id=80003&page=1&producer=apple",
-  "https://common-api.rozetka.com.ua/v1/api/pages/catalog/category?country=UA&lang=ua&url=" + encodeURIComponent(categoryUrl),
-  "https://common-api.rozetka.com.ua/v2/fat-menu/full?country=UA&lang=ua&front-type=xl",
-];
-
-let usable = false;
-for (const url of probes) {
-  const response = await req.get(url, {
-    impersonate: "chrome146",
-    timeout: 15_000,
-    headers,
-    allowRedirects: true,
-  });
-  const text = response.text ?? "";
-  console.log(JSON.stringify({ url, status: response.status, body: text.slice(0, 1600) }, null, 2));
-  if (url.includes("/pages/catalog/category") && response.status === 200 && text.includes('"data"')) usable = true;
+if (!response.ok) throw new Error(`Search API returned HTTP ${response.status}`);
+const json = JSON.parse(text) as { data?: { goods?: unknown[]; ids?: unknown[] } };
+const goods = json.data?.goods ?? json.data?.ids ?? [];
+if (!Array.isArray(goods) || goods.length === 0) {
+  throw new Error("Search API section_id probe returned zero goods");
 }
-
-if (!usable) throw new Error("Modern common-api catalog probe was not usable");
