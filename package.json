@@ -1,6 +1,6 @@
 {
   "name": "rozetka-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Browser-free MCP server for Rozetka.ua search and public product JSON APIs",
   "type": "module",
   "license": "MIT",
@@ -28,6 +28,7 @@
   "files": [
     "dist",
     "README.md",
+    "README.uk.md",
     "LICENSE"
   ],
   "engines": {

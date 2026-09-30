@@ -1,5 +1,7 @@
 # rozetka-mcp
 
+**English** | [Українська](./README.uk.md)
+
 [![CI](https://github.com/sdziupin/rozetka-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/sdziupin/rozetka-mcp/actions/workflows/ci.yml)
 [![Live Rozetka smoke](https://github.com/sdziupin/rozetka-mcp/actions/workflows/live-smoke.yml/badge.svg)](https://github.com/sdziupin/rozetka-mcp/actions/workflows/live-smoke.yml)
 
@@ -194,6 +196,14 @@ On every valid merge into `main`, `.github/workflows/publish.yml`:
 The workflow is retry-safe: if npm publishing succeeded but GitHub Release creation failed, a rerun skips the existing npm version and creates the missing Release.
 
 ### GitHub branch protection
+
+The repository includes a one-shot admin helper for the only settings GitHub does not expose to this connector:
+
+```bash
+bash scripts/configure-github.sh
+```
+
+Run it with a GitHub CLI login/token that has repository administration permission. It sets `devel` as the default branch and applies hard protection to `main`.
 
 Recommended hard protection for `main`:
 
