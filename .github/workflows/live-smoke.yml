@@ -15,4 +15,4 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npm run smoke -- "iphone"
+      - run: npm run smoke -- "iphone" # validates search redirect + catalog hydration
