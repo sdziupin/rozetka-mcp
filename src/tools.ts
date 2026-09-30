@@ -21,24 +21,24 @@ const searchProperties = {
   category_id: { type: "integer", minimum: 1 },
   sort: sortSchema,
   filters: filterSchema,
-  hydrate: { type: "boolean", default: true, description: "Hydrate search ids through batch getDetails for richer product data." },
+  hydrate: { type: "boolean", default: true, description: "Try rich catalog hydration when available; automatically falls back to public search results if Rozetka blocks the catalog host." },
 } as const;
 
 export const tools = [
   {
     name: "rozetka_search_products",
-    description: "Search Rozetka.ua through its JSON search backend. No browser automation. Can hydrate results through Rozetka catalog JSON API.",
+    description: "Search Rozetka.ua through its public-facing JSON search backend. No browser automation. Rich hydration is best-effort and never required.",
     inputSchema: { type: "object", properties: searchProperties, required: ["query"], additionalProperties: false },
   },
   {
     name: "rozetka_get_product",
-    description: "Get one Rozetka product by numeric id or product URL. Optionally fetch description and characteristics; failures of optional endpoints do not fail the product lookup.",
+    description: "Resolve one Rozetka product by numeric id or product URL. Description and characteristics are fetched by default from product-api; blocked optional catalog hydration does not fail the lookup.",
     inputSchema: {
       type: "object",
       properties: {
         id_or_url: { anyOf: [{ type: "integer", minimum: 1 }, { type: "string", minLength: 1 }] },
-        include_description: { type: "boolean", default: false },
-        include_characteristics: { type: "boolean", default: false },
+        include_description: { type: "boolean", default: true },
+        include_characteristics: { type: "boolean", default: true },
       },
       required: ["id_or_url"],
       additionalProperties: false,
@@ -46,7 +46,7 @@ export const tools = [
   },
   {
     name: "rozetka_get_products",
-    description: "Batch-hydrate up to 60 Rozetka products through the catalog JSON API.",
+    description: "Resolve up to 60 Rozetka product ids. Rich catalog hydration is attempted when available and falls back to public search/id records when blocked.",
     inputSchema: {
       type: "object",
       properties: { ids: { type: "array", minItems: 1, maxItems: 60, items: { anyOf: [{ type: "integer", minimum: 1 }, { type: "string", minLength: 1 }] } } },
@@ -64,23 +64,12 @@ export const tools = [
   },
   {
     name: "rozetka_list_categories",
-    description: "Fetch Rozetka's fat-menu JSON, flatten the category tree and optionally find categories by name/id.",
+    description: "Return category suggestions from Rozetka's search API for a text query. Full fat-menu enumeration is intentionally not used because common-api may be Cloudflare-protected.",
     inputSchema: {
       type: "object",
-      properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 500, default: 100 } },
+      properties: { query: { type: "string", minLength: 1 }, limit: { type: "integer", minimum: 1, maximum: 500, default: 100 } },
+      required: ["query"],
       additionalProperties: false,
-    },
-  },
-  {
-    name: "rozetka_search_category",
-    description: "List products in a Rozetka category by category id and hydrate them in one batch.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        category_id: { type: "integer", minimum: 1 }, page: { type: "integer", minimum: 1, default: 1 },
-        limit: { type: "integer", minimum: 1, maximum: 60, default: 20 }, seller: { type: "string" }, sort: sortSchema,
-      },
-      required: ["category_id"], additionalProperties: false,
     },
   },
   {
