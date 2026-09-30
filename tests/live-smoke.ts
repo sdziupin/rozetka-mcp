@@ -4,59 +4,48 @@ const headers = {
   "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
 };
 
-async function searchRozetka(query: string) {
-  const url = new URL("https://search.rozetka.com.ua/ua/search/api/v6/");
-  url.searchParams.set("front-type", "xl");
-  url.searchParams.set("country", "UA");
-  url.searchParams.set("lang", "ua");
-  url.searchParams.set("text", query);
-  url.searchParams.set("page", "1");
-
+async function getText(url: URL): Promise<{ status: number; text: string }> {
   const response = await fetch(url, { headers });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`Search API returned HTTP ${response.status} for ${query}`);
-  const json = JSON.parse(text) as {
-    data?: {
-      goods?: Array<Record<string, unknown> | number>;
-      ids?: number[];
-      meta?: { navigateTo?: { url?: string } };
-    };
-  };
-  const goods = json.data?.goods ?? json.data?.ids ?? [];
-  return { status: response.status, data: json.data, goods };
+  return { status: response.status, text: await response.text() };
 }
 
-const initial = await searchRozetka("Asus Zenbook 14");
-if (!Array.isArray(initial.goods) || initial.goods.length === 0) throw new Error("Search API returned zero goods");
+const search = new URL("https://search.rozetka.com.ua/ua/search/api/v6/");
+search.searchParams.set("front-type", "xl");
+search.searchParams.set("country", "UA");
+search.searchParams.set("lang", "ua");
+search.searchParams.set("text", "Asus Zenbook 14");
+search.searchParams.set("page", "1");
 
-const first = initial.goods[0];
-const productId = typeof first === "number" ? first : Number(first.id);
-if (!Number.isFinite(productId) || productId <= 0) throw new Error("Search result has no product id");
+const searchResult = await getText(search);
+if (searchResult.status !== 200) throw new Error(`Search HTTP ${searchResult.status}`);
+const searchJson = JSON.parse(searchResult.text) as { data?: { goods?: Array<{ id?: number } | number> } };
+const first = searchJson.data?.goods?.[0];
+const productId = typeof first === "number" ? first : Number(first?.id);
+if (!productId) throw new Error("Search returned no product id");
 
-console.log(JSON.stringify({
-  search_status: initial.status,
-  product_id: productId,
-  first_good: typeof first === "number" ? first : first,
-}, null, 2));
+const probes = [
+  "https://product-api.rozetka.com.ua/v4/goods/get-characteristic",
+  "https://product-api.rozetka.com.ua/v4/goods/get-goods-description",
+  "https://product-api.rozetka.com.ua/v4/marketing/get-super-offer",
+  "https://product-api.rozetka.com.ua/v4/goods/get-related",
+];
 
-const byId = await searchRozetka(String(productId));
-console.log(JSON.stringify({
-  id_search_status: byId.status,
-  id_search_count: byId.goods.length,
-  id_search_first: byId.goods[0] ?? null,
-  id_search_navigate_to: byId.data?.meta?.navigateTo?.url ?? null,
-}, null, 2));
+let publicProductApiCount = 0;
+for (const endpoint of probes) {
+  const url = new URL(endpoint);
+  url.searchParams.set("country", "UA");
+  url.searchParams.set("lang", "ua");
+  url.searchParams.set("goodsId", String(productId));
+  const result = await getText(url);
+  console.log(JSON.stringify({
+    endpoint,
+    product_id: productId,
+    status: result.status,
+    body: result.text.slice(0, 5000),
+  }, null, 2));
+  if (result.status === 200) publicProductApiCount += 1;
+}
 
-const productApi = new URL("https://product-api.rozetka.com.ua/v4/goods/get-characteristic");
-productApi.searchParams.set("country", "UA");
-productApi.searchParams.set("lang", "ua");
-productApi.searchParams.set("goodsId", String(productId));
-
-const productResponse = await fetch(productApi, { headers });
-const productText = await productResponse.text();
-console.log(JSON.stringify({
-  product_api_status: productResponse.status,
-  product_api_sample: productText.slice(0, 1500),
-}, null, 2));
-
-if (!productResponse.ok) throw new Error(`Product API returned HTTP ${productResponse.status}`);
+if (publicProductApiCount < 2) {
+  throw new Error(`Too few public product-api endpoints passed: ${publicProductApiCount}`);
+}
