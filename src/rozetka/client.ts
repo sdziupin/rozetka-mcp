@@ -1,3 +1,4 @@
+import { Impit } from "impit";
 import type { Config } from "../config.js";
 import { requestJson } from "../http.js";
 import type { JsonObject, Product, SearchSpec, SearchSort } from "../types.js";
@@ -5,6 +6,12 @@ import { categoryIdFromUrl, extractIds, extractProducts, extractSearchData, norm
 
 interface ClientOptions {
   fetchImpl?: typeof fetch;
+}
+
+function createImpersonatingFetch(): typeof fetch {
+  const client = new Impit({ browser: "chrome" });
+  return ((input: unknown, init?: RequestInit) =>
+    client.fetch(String(input), init as never) as unknown as Promise<Response>) as typeof fetch;
 }
 
 function object(value: unknown): JsonObject | undefined {
@@ -69,10 +76,14 @@ function parseNavigateTarget(value: unknown): { url: string; categoryId?: number
 }
 
 export class RozetkaClient {
+  private readonly fetchImpl: typeof fetch;
+
   constructor(
     private readonly config: Config,
     private readonly options: ClientOptions = {},
-  ) {}
+  ) {
+    this.fetchImpl = options.fetchImpl ?? createImpersonatingFetch();
+  }
 
   private headers(): HeadersInit {
     return {
@@ -86,7 +97,7 @@ export class RozetkaClient {
     return requestJson<T>(String(url), {
       timeoutMs: this.config.httpTimeoutMs,
       retries: this.config.httpRetries,
-      fetchImpl: this.options.fetchImpl,
+      fetchImpl: this.fetchImpl,
       headers: this.headers(),
     });
   }
