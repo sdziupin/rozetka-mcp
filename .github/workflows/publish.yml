@@ -1,35 +1,44 @@
-name: Publish npm
+name: Release npm
 
 on:
   push:
     branches: [main]
-    paths:
-      - .github/workflows/publish.yml
-      - package.json
-  release:
-    types: [published]
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "Publish the current package version to npm"
-        required: true
-        default: false
-        type: boolean
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: read
   id-token: write
 
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org/
+
+      - name: Require merged devel PR
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          COUNT=$(gh api "repos/$REPO/commits/$SHA/pulls"             --jq '[.[] | select(.base.ref == "main" and .head.ref == "devel" and .merged_at != null)] | length')
+          if [ "$COUNT" -lt 1 ]; then
+            echo "Refusing release: main release commits must come from a merged devel -> main pull request."
+            exit 1
+          fi
 
       - run: npm install
       - run: npm run check
@@ -37,40 +46,63 @@ jobs:
       - run: npm run build
       - run: npm run pack:check
       - run: npm run smoke
+      - run: test -f dist/index.js
 
-      - name: Check npm version is not already published
-        if: github.event_name == 'release' || inputs.publish == true
+      - name: Resolve release version
+        id: version
         run: |
           NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
+          node -e "const v=require('./package.json').version;if(!/^\\d+\\.\\d+\\.\\d+([+-][0-9A-Za-z.-]+)?$/.test(v)){throw new Error('package.json version is not valid semver: '+v)}"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Inspect existing release state
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.version.outputs.name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
           if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
-            echo "$NAME@$VERSION is already published"
-            exit 1
+            echo "npm_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "npm_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Verify release tag matches package version
-        if: github.event_name == 'release'
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          node - <<'NODE'
-          const pkg = require("./package.json");
-          const expected = `v${pkg.version}`;
-          if (process.env.RELEASE_TAG !== expected) {
-            console.error(`Release tag ${process.env.RELEASE_TAG} does not match package version ${pkg.version}; expected ${expected}`);
-            process.exit(1);
-          }
-          NODE
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Verify npm token
-        if: github.event_name == 'release' || inputs.publish == true
+        if: steps.state.outputs.npm_exists != 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           test -n "$NODE_AUTH_TOKEN" || { echo "GitHub Actions secret NPM_TOKEN is not configured"; exit 1; }
 
       - name: Publish to npm
-        if: github.event_name == 'release' || inputs.publish == true
+        if: steps.state.outputs.npm_exists != 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public --provenance
+
+      - name: Create GitHub Release
+        if: steps.state.outputs.release_exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release create "$TAG"             --repo "$GITHUB_REPOSITORY"             --target "$GITHUB_SHA"             --title "$TAG"             --generate-notes
+
+      - name: Release summary
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          echo "Released $NAME@$VERSION as $TAG" >> "$GITHUB_STEP_SUMMARY"
