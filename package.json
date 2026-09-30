@@ -1,7 +1,7 @@
 {
   "name": "rozetka-mcp",
   "version": "0.1.0",
-  "description": "Browser-free MCP server for Rozetka.ua using Rozetka's public-facing JSON backends",
+  "description": "Browser-free MCP server for Rozetka.ua search and public product JSON APIs",
   "type": "module",
   "license": "MIT",
   "author": "Serhii Dziupin",
@@ -40,15 +40,20 @@
     "start": "node dist/src/index.js",
     "dev": "tsx src/index.ts",
     "smoke": "tsx tests/live-smoke.ts",
-    "prepublishOnly": "npm run check && npm test && npm run build"
+    "prepublishOnly": "npm run check && npm test && npm run build",
+    "pack:check": "npm pack --dry-run"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
-    "impit": "^0.14.5"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "tsx": "^4.20.5",
     "typescript": "^5.7.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }
