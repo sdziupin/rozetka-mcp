@@ -48,7 +48,7 @@ function parseNavigateTarget(value: unknown): { url: string; categoryId?: number
     if (categoryId) {
       const marker = `/c${categoryId}/`;
       const tail = parsed.pathname.includes(marker)
-        ? parsed.pathname.split(marker, 2)[1].replace(/^\\/+|\\/+$/g, "")
+        ? parsed.pathname.split(marker, 2)[1].replace(/^\/+|\/+$/g, "")
         : "";
 
       for (const part of tail.split(";")) {
