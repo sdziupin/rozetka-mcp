@@ -13,12 +13,26 @@
   "bugs": {
     "url": "https://github.com/sdziupin/rozetka-mcp/issues"
   },
-  "keywords": ["mcp", "model-context-protocol", "rozetka", "rozetka.ua", "ukraine", "ecommerce", "shopping"],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "rozetka",
+    "rozetka.ua",
+    "ukraine",
+    "ecommerce",
+    "shopping"
+  ],
   "bin": {
     "rozetka-mcp": "dist/src/index.js"
   },
-  "files": ["dist", "README.md", "LICENSE"],
-  "engines": { "node": ">=20" },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
@@ -30,7 +44,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
-    "curl-cffi": "^0.1.50"
+    "impit": "^0.14.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
