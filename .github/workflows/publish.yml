@@ -1,0 +1,61 @@
+name: Publish npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the current package version to npm"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      - run: npm install
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm run pack:check
+      - run: npm run smoke
+
+      - name: Verify release tag matches package version
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          node - <<'NODE'
+          const pkg = require("./package.json");
+          const expected = `v${pkg.version}`;
+          if (process.env.RELEASE_TAG !== expected) {
+            console.error(`Release tag ${process.env.RELEASE_TAG} does not match package version ${pkg.version}; expected ${expected}`);
+            process.exit(1);
+          }
+          NODE
+
+      - name: Verify npm token
+        if: github.event_name == 'release' || inputs.publish == true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          test -n "$NODE_AUTH_TOKEN" || { echo "GitHub Actions secret NPM_TOKEN is not configured"; exit 1; }
+
+      - name: Publish to npm
+        if: github.event_name == 'release' || inputs.publish == true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
