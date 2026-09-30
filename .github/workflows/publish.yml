@@ -1,6 +1,11 @@
 name: Publish npm
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish.yml
+      - package.json
   release:
     types: [published]
   workflow_dispatch:
@@ -32,6 +37,16 @@ jobs:
       - run: npm run build
       - run: npm run pack:check
       - run: npm run smoke
+
+      - name: Check npm version is not already published
+        if: github.event_name == 'release' || inputs.publish == true
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION is already published"
+            exit 1
+          fi
 
       - name: Verify release tag matches package version
         if: github.event_name == 'release'
