@@ -27,6 +27,25 @@ jobs:
             exit 1
           fi
 
+  release-version:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Require an unpublished npm version
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          node -e "const v=require('./package.json').version;if(!/^\\d+\\.\\d+\\.\\d+([+-][0-9A-Za-z.-]+)?$/.test(v)){throw new Error('package.json version is not valid semver: '+v)}"
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION is already published. Bump package.json on devel before merging to main."
+            exit 1
+          fi
+          echo "Release version $VERSION is available."
+
   test:
     runs-on: ubuntu-latest
     steps:
