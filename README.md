@@ -1,5 +1,7 @@
 # rozetka-mcp
 
+**English** | [Українська](./README.uk.md)
+
 [![CI](https://github.com/sdziupin/rozetka-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/sdziupin/rozetka-mcp/actions/workflows/ci.yml)
 [![Live Rozetka smoke](https://github.com/sdziupin/rozetka-mcp/actions/workflows/live-smoke.yml/badge.svg)](https://github.com/sdziupin/rozetka-mcp/actions/workflows/live-smoke.yml)
 
