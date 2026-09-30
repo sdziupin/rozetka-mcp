@@ -2,8 +2,15 @@ name: Live Rozetka smoke
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches: [main]
+    paths:
+      - src/**
+      - tests/live-smoke.ts
+      - package.json
+      - .github/workflows/live-smoke.yml
+  push:
+    branches: [devel]
     paths:
       - src/**
       - tests/live-smoke.ts

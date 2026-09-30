@@ -2,13 +2,50 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, devel]
   pull_request:
+    branches: [main, devel]
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  main-policy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require merged devel PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          COUNT=$(gh api "repos/$REPO/commits/$SHA/pulls"             --jq '[.[] | select(.base.ref == "main" and .head.ref == "devel" and .merged_at != null)] | length')
+          if [ "$COUNT" -lt 1 ]; then
+            echo "main accepts release commits only from merged devel -> main pull requests."
+            exit 1
+          fi
+
+  release-version:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Require an unpublished npm version
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          node -e "const v=require('./package.json').version;if(!/^\\d+\\.\\d+\\.\\d+([+-][0-9A-Za-z.-]+)?$/.test(v)){throw new Error('package.json version is not valid semver: '+v)}"
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION is already published. Bump package.json on devel before merging to main."
+            exit 1
+          fi
+          echo "Release version $VERSION is available."
+
   test:
     runs-on: ubuntu-latest
     steps:

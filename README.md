@@ -140,61 +140,71 @@ Advanced endpoint overrides are available in `.env.example`.
 
 The live smoke intentionally tests only the public search/product endpoints that this package promises as its reliable core. Cloudflare-protected optional hydration is fail-soft and is not treated as a release blocker.
 
-## Publishing to npm
+## Branch and release flow
 
-Publishing is handled by `.github/workflows/publish.yml`.
+Development happens on `devel`. `main` is the release branch.
 
-### 1. Create an npm token
-
-Create an npm access token with permission to publish `rozetka-mcp`.
-
-### 2. Add the GitHub Actions secret
-
-In the GitHub repository:
+Normal flow:
 
 ```text
-Settings
-→ Secrets and variables
-→ Actions
-→ New repository secret
+feature work
+   ↓
+devel
+   ↓  PR
+main
+   ↓  automatic release
+GitHub Release + npm
 ```
 
-Create:
-
-```text
-Name:  NPM_TOKEN
-Value: <your npm publish token>
-```
-
-The workflow maps this secret to `NODE_AUTH_TOKEN`. The token is never stored in the repository.
-
-### 3. Release
-
-Update `package.json` version, for example:
+A PR into `main` must contain a package version that is not already published on npm. Before opening or merging the release PR, bump the version on `devel`:
 
 ```bash
-npm version patch --no-git-tag-version
+npm run version:patch
+# or
+npm run version:minor
+npm run version:major
 ```
 
-Commit and push the version change, then create a GitHub Release with a tag matching the version exactly:
+Commit that version change to `devel`. CI checks that the version is still available on npm.
+
+The release workflow only accepts automatic releases from commits associated with a merged `devel → main` pull request. A direct push to `main` fails the main-policy check and is refused by the release workflow.
+
+### npm publishing secret
+
+The repository must have this GitHub Actions repository secret:
 
 ```text
-package.json: 0.1.0
-release tag:  v0.1.0
+NPM_TOKEN=<npm automation/publish token>
 ```
 
-On a published GitHub Release the workflow:
+The token is exposed to npm only as `NODE_AUTH_TOKEN` inside the publish step and is never committed.
 
-1. installs dependencies
-2. typechecks
-3. runs unit tests
-4. builds
-5. validates the npm tarball
-6. runs the live Rozetka smoke test
-7. verifies `vX.Y.Z` matches `package.json`
-8. publishes with `npm publish --access public --provenance`
+On every valid merge into `main`, `.github/workflows/publish.yml`:
 
-The workflow can also be started manually. Manual runs default to validation-only; set the `publish` input to `true` to publish the current package version.
+1. verifies the commit came from a merged `devel → main` PR
+2. installs dependencies
+3. typechecks
+4. runs unit tests
+5. builds the runtime
+6. validates the npm tarball
+7. runs the live Rozetka smoke test
+8. publishes the version from `package.json` to npm when not already published
+9. creates the matching GitHub Release `vX.Y.Z`
+
+The workflow is retry-safe: if npm publishing succeeded but GitHub Release creation failed, a rerun skips the existing npm version and creates the missing Release.
+
+### GitHub branch protection
+
+Recommended hard protection for `main`:
+
+- require a pull request before merging
+- require CI checks: `test`, `docker`, `release-version`, and live smoke
+- require the branch to be up to date
+- block force pushes
+- block branch deletion
+- keep `devel` as the normal/default working branch
+
+The repository workflows additionally enforce the release policy in CI so a direct `main` push cannot publish a release.
 
 ## Buyer account actions
 
