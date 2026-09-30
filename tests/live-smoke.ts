@@ -1,6 +1,5 @@
-import { Impit } from "impit";
+import { req } from "curl-cffi";
 
-const http = new Impit({ browser: "chrome" });
 const headers = {
   Referer: "https://rozetka.com.ua/",
   Accept: "application/json, text/plain, */*",
@@ -16,9 +15,14 @@ const probes = [
 
 let usable = false;
 for (const url of probes) {
-  const response = await http.fetch(url, { headers });
-  const text = await response.text();
-  console.log(JSON.stringify({ url, status: response.status, body: text.slice(0, 1200) }, null, 2));
+  const response = await req.get(url, {
+    impersonate: "chrome146",
+    timeout: 15_000,
+    headers,
+    allowRedirects: true,
+  });
+  const text = response.text ?? "";
+  console.log(JSON.stringify({ url, status: response.status, body: text.slice(0, 1600) }, null, 2));
   if (url.includes("/pages/catalog/category") && response.status === 200 && text.includes('"data"')) usable = true;
 }
 
