@@ -29,7 +29,8 @@
     "prepublishOnly": "npm run check && npm test && npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.31.0"
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "impit": "^0.14.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
