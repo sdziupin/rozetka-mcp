@@ -195,6 +195,14 @@ The workflow is retry-safe: if npm publishing succeeded but GitHub Release creat
 
 ### GitHub branch protection
 
+The repository includes a one-shot admin helper for the only settings GitHub does not expose to this connector:
+
+```bash
+./scripts/configure-github.sh
+```
+
+It sets `devel` as the default branch and applies hard protection to `main`.
+
 Recommended hard protection for `main`:
 
 - require a pull request before merging
