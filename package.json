@@ -41,7 +41,10 @@
     "dev": "tsx src/index.ts",
     "smoke": "tsx tests/live-smoke.ts",
     "prepublishOnly": "npm run check && npm test && npm run build",
-    "pack:check": "npm pack --dry-run"
+    "pack:check": "npm pack --dry-run",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
