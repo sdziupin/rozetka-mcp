@@ -1,22 +1,22 @@
 const headers = {
   Referer: "https://rozetka.com.ua/",
-  Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+  Accept: "application/json, text/plain, */*",
   "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
 };
 
+async function get(url: URL): Promise<{ status: number; text: string }> {
+  const response = await fetch(url, { headers });
+  return { status: response.status, text: await response.text() };
+}
+
 const productId = 510920189;
-const shortUrl = `https://rozetka.com.ua/ua/p${productId}/`;
-const response = await fetch(shortUrl, { headers, redirect: "follow" });
-const text = await response.text();
+const probes = [
+  new URL(`https://product-api.rozetka.com.ua/v4/goods/get-other-sellers?front-type=xl&country=UA&lang=ua&goodsId=${productId}`),
+  new URL(`https://product-api.rozetka.com.ua/v4/comments/get?front-type=xl&country=UA&lang=ua&goods=${productId}&page=1&sort=date&type=comment&limit=1`),
+];
 
-console.log(JSON.stringify({
-  requested: shortUrl,
-  final_url: response.url,
-  status: response.status,
-  content_type: response.headers.get("content-type"),
-  body_sample: text.slice(0, 12000),
-}, null, 2));
-
-if (!response.ok) throw new Error(`Product page returned HTTP ${response.status}`);
-if (!response.url.includes(`p${productId}`)) throw new Error("Product page did not resolve canonical product URL");
-if (!text.includes(String(productId))) throw new Error("Product page HTML does not contain product id");
+for (const url of probes) {
+  const result = await get(url);
+  console.log(JSON.stringify({ url: String(url), status: result.status, body: result.text.slice(0, 12000) }, null, 2));
+  if (result.status !== 200) throw new Error(`Probe failed: ${result.status} ${url}`);
+}
