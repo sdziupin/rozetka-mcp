@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - .github/workflows/live-smoke.yml
+      - tests/live-smoke.ts
 
 jobs:
   smoke:
