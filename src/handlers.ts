@@ -2,7 +2,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { Config } from "./config.js";
 import { RozetkaClient } from "./rozetka/client.js";
 import { SavedSearchStore } from "./saved-searches.js";
-import type { JsonObject, SearchSpec, SearchSort } from "./types.js";
+import type { JsonObject, SearchSpec } from "./types.js";
 
 const stores = new WeakMap<Config, SavedSearchStore>();
 
@@ -51,14 +51,12 @@ export async function handleTool(config: Config, name: string, rawArgs: unknown)
     switch (name) {
       case "rozetka_search_products": return ok(await client.search(searchSpec(args)));
       case "rozetka_get_product": return ok(await client.getProduct(required<number | string>(args, "id_or_url"), {
-        description: Boolean(args.include_description), characteristics: Boolean(args.include_characteristics),
+        description: args.include_description as boolean | undefined,
+        characteristics: args.include_characteristics as boolean | undefined,
       }));
       case "rozetka_get_products": return ok(await client.getProducts(required<Array<number | string>>(args, "ids")));
       case "rozetka_list_filters": return ok(await client.listFilters(required<string>(args, "query"), args.category_id as number | undefined));
-      case "rozetka_list_categories": return ok(await client.listCategories(args.query as string | undefined, (args.limit as number | undefined) ?? 100));
-      case "rozetka_search_category": return ok(await client.searchCategory(required<number>(args, "category_id"), {
-        page: args.page as number | undefined, limit: args.limit as number | undefined, seller: args.seller as string | undefined, sort: args.sort as SearchSort | undefined,
-      }));
+      case "rozetka_list_categories": return ok(await client.listCategories(required<string>(args, "query"), (args.limit as number | undefined) ?? 100));
       case "rozetka_resolve_url": return ok(client.resolveUrl(required<string>(args, "url")));
       case "rozetka_saved_search_list": return ok(await saved.list());
       case "rozetka_saved_search_create": return ok(await saved.create(required<string>(args, "name"), searchSpec(required(args, "search"))));
