@@ -23,7 +23,7 @@
     "shopping"
   ],
   "bin": {
-    "rozetka-mcp": "dist/src/index.js"
+    "rozetka-mcp": "dist/index.js"
   },
   "files": [
     "dist",
@@ -34,10 +34,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "start": "node dist/src/index.js",
+    "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "smoke": "tsx tests/live-smoke.ts",
     "prepublishOnly": "npm run check && npm test && npm run build",
