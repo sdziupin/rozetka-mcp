@@ -1,4 +1,3 @@
-import { Impit } from "impit";
 import type { Config } from "../config.js";
 import { requestJson } from "../http.js";
 import type { JsonObject, Product, SearchSpec, SearchSort } from "../types.js";
@@ -6,12 +5,6 @@ import { categoryIdFromUrl, extractIds, extractProducts, extractSearchData, norm
 
 interface ClientOptions {
   fetchImpl?: typeof fetch;
-}
-
-function createImpersonatingFetch(): typeof fetch {
-  const client = new Impit({ browser: "chrome" });
-  return ((input: unknown, init?: RequestInit) =>
-    client.fetch(String(input), init as never) as unknown as Promise<Response>) as typeof fetch;
 }
 
 function object(value: unknown): JsonObject | undefined {
@@ -82,7 +75,7 @@ export class RozetkaClient {
     private readonly config: Config,
     private readonly options: ClientOptions = {},
   ) {
-    this.fetchImpl = options.fetchImpl ?? createImpersonatingFetch();
+    this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
   private headers(): HeadersInit {
@@ -120,7 +113,7 @@ export class RozetkaClient {
     params.set("text", query);
     params.set("page", String(page));
     if (spec.seller) params.set("seller", spec.seller);
-    if (spec.category_id) params.set("category_id", String(spec.category_id));
+    if (spec.category_id) params.set("section_id", String(spec.category_id));
     const sort = sortValue(spec.sort);
     if (sort) params.set("sort", sort);
     appendFilters(params, spec.filters);
@@ -190,33 +183,58 @@ export class RozetkaClient {
   async getProducts(ids: Array<number | string>): Promise<Product[]> {
     const unique = [...new Set(ids.map(productId).filter((id): id is number => Boolean(id)))];
     if (!unique.length) return [];
-    if (unique.length > 60) throw new Error("At most 60 product ids can be hydrated in one call");
+    if (unique.length > 60) throw new Error("At most 60 product ids can be resolved in one call");
 
-    const params = this.commonParams();
-    params.set("product_ids", unique.join(","));
-    params.set("with_groups", "1");
-    params.set("with_docket", "1");
-    params.set("with_extra_info", "1");
-    params.set("goods_group_href", "1");
+    // Best-effort rich hydration. Rozetka currently protects xl-catalog-api with
+    // Cloudflare on some networks/IP ranges, so this must never be required.
+    try {
+      const params = this.commonParams();
+      params.set("product_ids", unique.join(","));
+      params.set("with_groups", "1");
+      params.set("with_docket", "1");
+      params.set("with_extra_info", "1");
+      params.set("goods_group_href", "1");
 
-    const raw = await this.get<unknown>(`${this.config.catalogApiBase}/goods/getDetails?${params}`);
-    const root = object(raw);
-    const payload = root?.data ?? raw;
-    const payloadObject = object(payload);
-    const candidates = Array.isArray(payload)
-      ? payload
-      : array(payloadObject?.goods ?? payloadObject?.products ?? payloadObject?.items);
-    return candidates.map((item) => normalizeProduct(item)).filter((item): item is Product => Boolean(item));
+      const raw = await this.get<unknown>(`${this.config.catalogApiBase}/goods/getDetails?${params}`);
+      const root = object(raw);
+      const payload = root?.data ?? raw;
+      const payloadObject = object(payload);
+      const candidates = Array.isArray(payload)
+        ? payload
+        : array(payloadObject?.goods ?? payloadObject?.products ?? payloadObject?.items);
+      const products = candidates.map((item) => normalizeProduct(item)).filter((item): item is Product => Boolean(item));
+      if (products.length) return products;
+    } catch {
+      // Fall back to the public search API below.
+    }
+
+    const products: Product[] = [];
+    for (const id of unique) {
+      try {
+        const params = this.commonParams();
+        params.set("text", String(id));
+        params.set("page", "1");
+        const raw = await this.get<unknown>(`${this.config.searchApiBase}/?${params}`);
+        const exact = extractProducts(raw).find((product) => product.id === id);
+        products.push(exact ?? { id });
+      } catch {
+        products.push({ id });
+      }
+    }
+    return products;
   }
 
   async getProduct(idOrUrl: number | string, options: { description?: boolean; characteristics?: boolean; raw?: boolean } = {}): Promise<JsonObject> {
     const id = productId(idOrUrl);
     if (!id) throw new Error(`Cannot resolve Rozetka product id from: ${idOrUrl}`);
-    const [product] = await this.getProducts([id]);
-    if (!product) throw new Error(`Product not found: ${id}`);
-
+    const [resolved] = await this.getProducts([id]);
+    const product: Product = resolved ?? { id };
     const result: JsonObject = { product };
-    if (options.description) {
+
+    const includeDescription = options.description ?? true;
+    const includeCharacteristics = options.characteristics ?? true;
+
+    if (includeDescription) {
       try {
         const params = this.commonParams();
         params.set("goodsId", String(id));
@@ -225,7 +243,7 @@ export class RozetkaClient {
         result.description_error = error instanceof Error ? error.message : String(error);
       }
     }
-    if (options.characteristics) {
+    if (includeCharacteristics) {
       try {
         const params = this.commonParams();
         params.set("goodsId", String(id));
@@ -241,7 +259,7 @@ export class RozetkaClient {
     const params = this.commonParams();
     params.set("text", query.trim());
     params.set("page", "1");
-    if (categoryId) params.set("category_id", String(categoryId));
+    if (categoryId) params.set("section_id", String(categoryId));
     const data = extractSearchData(await this.get(`${this.config.searchApiBase}/?${params}`));
     return {
       query,
@@ -254,44 +272,21 @@ export class RozetkaClient {
     };
   }
 
-  async listCategories(query?: string, limit = 100): Promise<JsonObject> {
+  async listCategories(query: string, limit = 100): Promise<JsonObject> {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) throw new Error("query is required for category discovery");
+
     const params = this.commonParams();
-    const raw = await this.get<unknown>(`${this.config.commonApiBase}/v2/fat-menu/full?${params}`);
-    const data = extractSearchData(raw);
-    const flattened: Array<{ id: number; title?: string; url?: string; parent_id?: number }> = [];
-    const seen = new Set<number>();
+    params.set("text", normalizedQuery);
+    params.set("page", "1");
+    const data = extractSearchData(await this.get(`${this.config.searchApiBase}/?${params}`));
+    const categories = Array.isArray(data.categories) ? data.categories : data.categories ? [data.categories] : [];
 
-    const walk = (value: unknown, parentId?: number): void => {
-      if (Array.isArray(value)) {
-        for (const item of value) walk(item, parentId);
-        return;
-      }
-      const node = object(value);
-      if (!node) return;
-      const id = productId(node.category_id ?? node.id);
-      const title = typeof node.title === "string" ? node.title : typeof node.name === "string" ? node.name : undefined;
-      const url = typeof node.href === "string" ? node.href : typeof node.url === "string" ? node.url : undefined;
-      const currentParent = numberValue(node.parent_id) ?? parentId;
-      if (id && !seen.has(id)) {
-        seen.add(id);
-        flattened.push({ id, title, url, parent_id: currentParent });
-      }
-      const nextParent = id ?? parentId;
-      for (const key of ["children", "items", "categories", "one", "two", "three", "four"]) {
-        if (node[key] !== undefined) walk(node[key], nextParent);
-      }
-      for (const [key, child] of Object.entries(node)) {
-        if (["children", "items", "categories", "one", "two", "three", "four"].includes(key)) continue;
-        if (child && typeof child === "object") walk(child, nextParent);
-      }
+    return {
+      query: normalizedQuery,
+      returned: Math.min(categories.length, Math.max(1, Math.min(500, limit))),
+      categories: categories.slice(0, Math.max(1, Math.min(500, limit))),
     };
-    walk(data);
-
-    const needle = query?.trim().toLowerCase();
-    const matches = needle
-      ? flattened.filter((item) => item.title?.toLowerCase().includes(needle) || String(item.id) === needle)
-      : flattened;
-    return { total: matches.length, returned: Math.min(matches.length, limit), categories: matches.slice(0, Math.max(1, Math.min(500, limit))) };
   }
 
   async searchCategory(categoryId: number, options: { page?: number; limit?: number; seller?: string; sort?: SearchSort; filters?: SearchSpec["filters"] } = {}): Promise<JsonObject> {
