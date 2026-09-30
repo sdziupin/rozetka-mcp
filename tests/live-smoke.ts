@@ -1,12 +1,25 @@
-import { loadConfig } from "../src/config.js";
-import { RozetkaClient } from "../src/rozetka/client.js";
+import { Impit } from "impit";
 
-const client = new RozetkaClient(loadConfig());
-const query = process.argv[2] || "iphone";
-const result = await client.search({ query, limit: 3, hydrate: true });
+const http = new Impit({ browser: "chrome" });
+const headers = {
+  Referer: "https://rozetka.com.ua/",
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
+};
 
-console.log(JSON.stringify(result, null, 2));
+const categoryUrl = "https://rozetka.com.ua/ua/mobile-phones/c80003/producer=apple/";
+const probes = [
+  "https://xl-catalog-api.rozetka.com.ua/v4/goods/get?front-type=xl&country=UA&lang=ua&category_id=80003&page=1&producer=apple",
+  "https://common-api.rozetka.com.ua/v1/api/pages/catalog/category?country=UA&lang=ua&url=" + encodeURIComponent(categoryUrl),
+  "https://common-api.rozetka.com.ua/v2/fat-menu/full?country=UA&lang=ua&front-type=xl",
+];
 
-if ((result.returned as number | undefined) === 0) {
-  throw new Error("Live smoke returned zero products");
+let usable = false;
+for (const url of probes) {
+  const response = await http.fetch(url, { headers });
+  const text = await response.text();
+  console.log(JSON.stringify({ url, status: response.status, body: text.slice(0, 1200) }, null, 2));
+  if (url.includes("/pages/catalog/category") && response.status === 200 && text.includes('"data"')) usable = true;
 }
+
+if (!usable) throw new Error("Modern common-api catalog probe was not usable");
