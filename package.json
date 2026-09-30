@@ -1,0 +1,39 @@
+{
+  "name": "rozetka-mcp",
+  "version": "0.1.0",
+  "description": "Browser-free MCP server for Rozetka.ua using Rozetka's public-facing JSON backends",
+  "type": "module",
+  "license": "MIT",
+  "author": "Serhii Dziupin",
+  "homepage": "https://github.com/sdziupin/rozetka-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sdziupin/rozetka-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sdziupin/rozetka-mcp/issues"
+  },
+  "keywords": ["mcp", "model-context-protocol", "rozetka", "rozetka.ua", "ukraine", "ecommerce", "shopping"],
+  "bin": {
+    "rozetka-mcp": "dist/index.js"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "smoke": "tsx tests/live-smoke.ts",
+    "prepublishOnly": "npm run check && npm test && npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.7.2"
+  }
+}
