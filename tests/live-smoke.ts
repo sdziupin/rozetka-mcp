@@ -1,44 +1,53 @@
-import { Impit } from "impit";
-
-const impit = new Impit({ browser: "chrome" });
 const headers = {
   Referer: "https://rozetka.com.ua/",
   Accept: "application/json, text/plain, */*",
   "Accept-Language": "uk-UA,uk;q=0.9,en;q=0.8",
 };
 
-const search = new URL("https://search.rozetka.com.ua/ua/search/api/v6/");
-search.searchParams.set("front-type", "xl");
-search.searchParams.set("country", "UA");
-search.searchParams.set("lang", "ua");
-search.searchParams.set("text", "iphone");
-search.searchParams.set("page", "1");
+const queries = [
+  "Asus Zenbook 14",
+  "Samsung Galaxy S25 Ultra",
+  "Deye SE-F16-C",
+];
 
-const searchResponse = await impit.fetch(search.toString(), { headers });
-const searchText = await searchResponse.text();
-if (!searchResponse.ok) throw new Error(`Search API returned HTTP ${searchResponse.status}: ${searchText.slice(0, 500)}`);
-const searchJson = JSON.parse(searchText) as {
-  data?: { meta?: { navigateTo?: { url?: string } } };
-};
-const navigateTo = searchJson.data?.meta?.navigateTo?.url;
-if (!navigateTo) throw new Error("Search API did not return navigateTo for iphone");
+let firstProductId: number | undefined;
+for (const query of queries) {
+  const url = new URL("https://search.rozetka.com.ua/ua/search/api/v6/");
+  url.searchParams.set("front-type", "xl");
+  url.searchParams.set("country", "UA");
+  url.searchParams.set("lang", "ua");
+  url.searchParams.set("text", query);
+  url.searchParams.set("page", "1");
 
-const category = new URL("https://common-api.rozetka.com.ua/v1/api/pages/catalog/category");
-category.searchParams.set("country", "UA");
-category.searchParams.set("lang", "ua");
-category.searchParams.set("url", navigateTo);
+  const response = await fetch(url, { headers });
+  const text = await response.text();
+  console.log(JSON.stringify({ query, status: response.status, body: text.slice(0, 6000) }, null, 2));
+  if (!response.ok) throw new Error(`Search API returned HTTP ${response.status} for ${query}`);
 
-const categoryResponse = await impit.fetch(category.toString(), { headers });
-const categoryText = await categoryResponse.text();
+  const json = JSON.parse(text) as {
+    data?: { goods?: Array<{ id?: number } | number>; ids?: number[] };
+  };
+  const goods = json.data?.goods ?? json.data?.ids ?? [];
+  if (Array.isArray(goods) && goods.length > 0) {
+    const first = goods[0];
+    firstProductId = typeof first === "number" ? first : first?.id;
+    if (firstProductId) break;
+  }
+}
+
+if (!firstProductId) throw new Error("Search API smoke found no product ids");
+
+const productApi = new URL("https://product-api.rozetka.com.ua/v4/goods/get-characteristic");
+productApi.searchParams.set("country", "UA");
+productApi.searchParams.set("lang", "ua");
+productApi.searchParams.set("goodsId", String(firstProductId));
+
+const productResponse = await fetch(productApi, { headers });
+const productText = await productResponse.text();
 console.log(JSON.stringify({
-  search_status: searchResponse.status,
-  navigate_to: navigateTo,
-  category_status: categoryResponse.status,
-  category_body: categoryText.slice(0, 20000),
+  product_id: firstProductId,
+  product_api_status: productResponse.status,
+  product_api_body: productText.slice(0, 4000),
 }, null, 2));
 
-if (!categoryResponse.ok) {
-  throw new Error(`Catalog page API returned HTTP ${categoryResponse.status}`);
-}
-const categoryJson = JSON.parse(categoryText) as { data?: unknown };
-if (!categoryJson.data) throw new Error("Catalog page API returned no data");
+if (!productResponse.ok) throw new Error(`Product API returned HTTP ${productResponse.status}`);
